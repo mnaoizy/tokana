@@ -9,10 +9,12 @@ export class ByteBuffer {
 
   constructor(arg?: number | Uint8Array) {
     if (arg instanceof Uint8Array) {
-      const src = arg.buffer instanceof SharedArrayBuffer
+      const isShared =
+        typeof SharedArrayBuffer !== "undefined" && arg.buffer instanceof SharedArrayBuffer;
+      const src = isShared
         ? new ArrayBuffer(arg.byteLength)
-        : arg.buffer.slice(arg.byteOffset, arg.byteOffset + arg.byteLength);
-      if (arg.buffer instanceof SharedArrayBuffer) {
+        : (arg.buffer as ArrayBuffer).slice(arg.byteOffset, arg.byteOffset + arg.byteLength);
+      if (isShared) {
         new Uint8Array(src).set(arg);
       }
       this.buffer = src;
