@@ -19,6 +19,13 @@ export class BrowserLoader implements DictionaryLoader {
       throw new Error(`Failed to fetch dictionary file: ${url} (${response.status})`);
     }
 
+    // If the server set Content-Encoding: gzip, the browser already decompressed
+    // the response transparently — no need to decompress again.
+    const contentEncoding = response.headers.get("Content-Encoding");
+    if (contentEncoding === "gzip") {
+      return response.arrayBuffer();
+    }
+
     if (!response.body) {
       throw new Error(`Response body is null for: ${url}`);
     }
