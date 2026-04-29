@@ -30,7 +30,7 @@ export class ViterbiBuilder {
     const lattice = new ViterbiLattice(text.length);
     const charDef = this.unknownDictionary.getCharacterDefinition();
 
-    for (let i = 0; i < text.length; i++) {
+    for (let i = 0; i < text.length; i = nextCodePointPosition(text, i)) {
       const suffix = text.substring(i);
 
       // Search known words using trie
@@ -40,24 +40,25 @@ export class ViterbiBuilder {
       for (const match of matches) {
         if (match.length === 0) continue;
         hasKnownWord = true;
-        const wordId = match.value;
         const surface = text.substring(i, i + match.length);
 
-        const node = new ViterbiNode(
-          wordId,
-          this.tokenInfoDictionary.getWordCost(wordId),
-          i,
-          match.length,
-          this.tokenInfoDictionary.getLeftId(wordId),
-          this.tokenInfoDictionary.getRightId(wordId),
-          "KNOWN",
-          surface
-        );
-        lattice.addNode(node);
+        for (const wordId of this.tokenInfoDictionary.getWordIds(match.value)) {
+          const node = new ViterbiNode(
+            wordId,
+            this.tokenInfoDictionary.getWordCost(wordId),
+            i,
+            match.length,
+            this.tokenInfoDictionary.getLeftId(wordId),
+            this.tokenInfoDictionary.getRightId(wordId),
+            "KNOWN",
+            surface
+          );
+          lattice.addNode(node);
+        }
       }
 
       // Process unknown words
-      const charCode = text.charCodeAt(i);
+      const charCode = codePointAt(text, i);
       const isInvoke = charDef.isInvoke(charCode);
 
       // Add unknown word nodes if:
@@ -77,7 +78,7 @@ export class ViterbiBuilder {
     pos: number,
     charDef: import("../dict/CharacterDefinition.js").CharacterDefinition
   ): void {
-    const charCode = text.charCodeAt(pos);
+    const charCode = codePointAt(text, pos);
     const classId = charDef.getCharacterClass(charCode);
     const isGroup = charDef.isGroup(charCode);
     const maxLength = charDef.getMaxLength(charCode);
@@ -89,11 +90,11 @@ export class ViterbiBuilder {
 
     // If group flag is set, try to group consecutive same-class characters
     if (isGroup) {
-      let endPos = pos + 1;
+      let endPos = nextCodePointPosition(text, pos);
       while (endPos < text.length) {
-        const nextClass = charDef.getCharacterClass(text.charCodeAt(endPos));
+        const nextClass = charDef.getCharacterClass(codePointAt(text, endPos));
         if (nextClass !== classId) break;
-        endPos++;
+        endPos = nextCodePointPosition(text, endPos);
       }
 
       const surface = text.substring(pos, endPos);
@@ -113,16 +114,18 @@ export class ViterbiBuilder {
     }
 
     // Also try individual character lengths up to maxLength
-    const limit = maxLength > 0 ? Math.min(maxLength, text.length - pos) : 1;
-    for (let len = 1; len <= limit; len++) {
+    const limit = maxLength > 0 ? maxLength : 1;
+    let endPos = pos;
+    for (let len = 1; len <= limit && endPos < text.length; len++) {
       if (len > 1) {
         const nextClass = charDef.getCharacterClass(
-          text.charCodeAt(pos + len - 1)
+          codePointAt(text, endPos)
         );
         if (nextClass !== classId) break;
       }
+      endPos = nextCodePointPosition(text, endPos);
 
-      const surface = text.substring(pos, pos + len);
+      const surface = text.substring(pos, endPos);
       for (const wordId of wordIds) {
         // Avoid duplicating the grouped entry
         if (isGroup && len === 1) continue;
@@ -131,7 +134,7 @@ export class ViterbiBuilder {
           wordId,
           this.unknownDictionary.getWordCost(wordId),
           pos,
-          len,
+          surface.length,
           this.unknownDictionary.getLeftId(wordId),
           this.unknownDictionary.getRightId(wordId),
           "UNKNOWN",
@@ -143,13 +146,13 @@ export class ViterbiBuilder {
 
     // If no nodes were added (non-group, maxLength=0), add single character
     if (!isGroup && maxLength === 0) {
-      const surface = text.substring(pos, pos + 1);
+      const surface = text.substring(pos, nextCodePointPosition(text, pos));
       for (const wordId of wordIds) {
         const node = new ViterbiNode(
           wordId,
           this.unknownDictionary.getWordCost(wordId),
           pos,
-          1,
+          surface.length,
           this.unknownDictionary.getLeftId(wordId),
           this.unknownDictionary.getRightId(wordId),
           "UNKNOWN",
@@ -159,4 +162,13 @@ export class ViterbiBuilder {
       }
     }
   }
+}
+
+function codePointAt(text: string, pos: number): number {
+  return text.codePointAt(pos) ?? text.charCodeAt(pos);
+}
+
+function nextCodePointPosition(text: string, pos: number): number {
+  const code = text.codePointAt(pos);
+  return pos + (code !== undefined && code > 0xffff ? 2 : 1);
 }

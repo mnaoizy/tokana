@@ -95,6 +95,7 @@ export async function compile(args: string[]): Promise<void> {
   // Build token info dictionary buffer
   const tidBuffer = new ByteBuffer(entries.length * 64);
   const tidMapEntries: number[] = []; // wordId → position in tidBuffer
+  const tidWordIdGroups: { firstWordId: number; count: number }[] = [];
   let wordId = 0;
 
   const trieKeys: { key: number[]; value: number }[] = [];
@@ -113,10 +114,11 @@ export async function compile(args: string[]): Promise<void> {
 
       wordId++;
     }
+    tidWordIdGroups.push({ firstWordId, count: group.length });
 
     // Trie maps surface → first word ID for this surface
     trieKeys.push({
-      key: Array.from(surface).map((ch) => ch.charCodeAt(0)),
+      key: Array.from(surface).map((ch) => ch.codePointAt(0) ?? 0),
       value: firstWordId,
     });
   }
@@ -144,8 +146,10 @@ export async function compile(args: string[]): Promise<void> {
   // Save token info dictionary
   await writeGzipped(join(outputDir, "tid.dat.gz"), tidBuffer.shrink());
 
-  // Save token info position data (empty for now, features stored inline)
-  await writeGzipped(join(outputDir, "tid_pos.dat.gz"), new Uint8Array(0));
+  await writeGzipped(
+    join(outputDir, "tid_pos.dat.gz"),
+    buildWordIdGroupBuffer(tidWordIdGroups)
+  );
 
   // Save target map
   const mapBuf = new ByteBuffer(4 + tidMapEntries.length * 4);
@@ -297,7 +301,7 @@ async function parseCharDef(
 
 async function parseUnkDef(
   path: string,
-  _charDef: CharacterDefinition
+  charDef: CharacterDefinition
 ): Promise<{ unkBuf: Uint8Array; unkPosBuf: Uint8Array; unkMapBuf: Uint8Array }> {
   const raw = await readFile(path);
   const text = decodeAutoDetect(new Uint8Array(raw));
@@ -305,6 +309,9 @@ async function parseUnkDef(
 
   const unkBuffer = new ByteBuffer(1024 * 64);
   const unkMapEntries: number[] = [];
+  const classWordIds: number[][] = charDef
+    .getCharacterClasses()
+    .map(() => []);
 
   for (const line of lines) {
     if (line.trim() === "" || line.startsWith("#")) continue;
@@ -312,14 +319,21 @@ async function parseUnkDef(
     if (parts.length < 5) continue;
 
     // Format: className,leftId,rightId,cost,features...
-    // parts[0] is className
+    const className = parts[0];
     const leftId = parseInt(parts[1], 10);
     const rightId = parseInt(parts[2], 10);
     const cost = parseInt(parts[3], 10);
     const features = parts.slice(4).join(",");
 
+    const wordId = unkMapEntries.length;
     const pos = unkBuffer.getPosition();
     unkMapEntries.push(pos);
+    const classId = charDef
+      .getCharacterClasses()
+      .findIndex((charClass) => charClass.name === className);
+    if (classId >= 0) {
+      classWordIds[classId].push(wordId);
+    }
 
     unkBuffer.putInt16(leftId);
     unkBuffer.putInt16(rightId);
@@ -337,9 +351,36 @@ async function parseUnkDef(
 
   return {
     unkBuf: unkBuffer.shrink(),
-    unkPosBuf: new Uint8Array(0),
+    unkPosBuf: buildUnknownClassBuffer(classWordIds),
     unkMapBuf: mapBuf.shrink(),
   };
+}
+
+function buildWordIdGroupBuffer(
+  groups: { firstWordId: number; count: number }[]
+): Uint8Array {
+  const buf = new ByteBuffer(4 + groups.length * 8);
+  buf.putInt32(groups.length);
+  for (const group of groups) {
+    buf.putInt32(group.firstWordId);
+    buf.putInt32(group.count);
+  }
+  return buf.shrink();
+}
+
+function buildUnknownClassBuffer(classWordIds: number[][]): Uint8Array {
+  const size =
+    4 +
+    classWordIds.reduce((total, wordIds) => total + 4 + wordIds.length * 4, 0);
+  const buf = new ByteBuffer(size);
+  buf.putInt32(classWordIds.length);
+  for (const wordIds of classWordIds) {
+    buf.putInt32(wordIds.length);
+    for (const wordId of wordIds) {
+      buf.putInt32(wordId);
+    }
+  }
+  return buf.shrink();
 }
 
 async function writeGzipped(path: string, data: Uint8Array): Promise<void> {

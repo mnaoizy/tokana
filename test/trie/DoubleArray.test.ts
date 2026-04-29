@@ -90,6 +90,20 @@ describe("DoubleArray", () => {
     ]);
   });
 
+  it("should handle supplementary Unicode characters", () => {
+    const da = DoubleArray.build([
+      { key: "𠮷", value: 0 },
+      { key: "𠮷野", value: 1 },
+    ]);
+
+    expect(da.lookup("𠮷")).toBe(0);
+    expect(da.lookup("𠮷野")).toBe(1);
+    expect(da.commonPrefixSearch("𠮷野家")).toEqual([
+      { value: 0, length: 2 },
+      { value: 1, length: 3 },
+    ]);
+  });
+
   it("should serialize and deserialize", () => {
     const original = DoubleArray.build([
       { key: "hello", value: 42 },
