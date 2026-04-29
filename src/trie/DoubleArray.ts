@@ -27,7 +27,7 @@ export class DoubleArray {
    */
   static build(keys: { key: string; value: number }[]): DoubleArray {
     const encoded = keys.map(({ key, value }) => ({
-      key: Array.from(key).map((ch) => ch.charCodeAt(0)),
+      key: Array.from(key).map((ch) => ch.codePointAt(0) ?? 0),
       value,
     }));
     const { base, check } = DoubleArrayBuilder.build(encoded);
@@ -42,8 +42,9 @@ export class DoubleArray {
     let pos = 0;
     let baseVal = this.base[0];
 
-    for (let i = 0; i < key.length; i++) {
-      const code = key.charCodeAt(i);
+    for (let i = 0; i < key.length; ) {
+      const code = key.codePointAt(i);
+      if (code === undefined) return -1;
       const next = baseVal + code;
 
       if (next >= this.check.length || this.check[next] !== pos + 1) {
@@ -51,6 +52,7 @@ export class DoubleArray {
       }
       pos = next;
       baseVal = this.base[pos];
+      i += code > 0xffff ? 2 : 1;
     }
 
     // Check for terminal (code 0)
@@ -77,7 +79,7 @@ export class DoubleArray {
     let pos = 0;
     let baseVal = this.base[0];
 
-    for (let i = 0; i < key.length; i++) {
+    for (let i = 0; i < key.length; ) {
       // Check for terminal at current position
       const termPos = baseVal; // base + 0
       if (
@@ -91,7 +93,8 @@ export class DoubleArray {
         }
       }
 
-      const code = key.charCodeAt(i);
+      const code = key.codePointAt(i);
+      if (code === undefined) return results;
       const next = baseVal + code;
 
       if (next < 0 || next >= this.check.length || this.check[next] !== pos + 1) {
@@ -99,6 +102,7 @@ export class DoubleArray {
       }
       pos = next;
       baseVal = this.base[pos];
+      i += code > 0xffff ? 2 : 1;
     }
 
     // Check for terminal at the end

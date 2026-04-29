@@ -8,10 +8,12 @@ import { TokenInfoDictionary } from "./TokenInfoDictionary.js";
 
 export class UnknownDictionary extends TokenInfoDictionary {
   private characterDefinition: CharacterDefinition;
+  private classIdToWordIds: Record<number, number[]> | null;
 
   constructor() {
     super();
     this.characterDefinition = new CharacterDefinition();
+    this.classIdToWordIds = null;
   }
 
   setCharacterDefinition(charDef: CharacterDefinition): void {
@@ -35,7 +37,11 @@ export class UnknownDictionary extends TokenInfoDictionary {
   /**
    * Lookup word IDs by character class index.
    */
-  lookupByCharClass(_classId: number): number[] {
+  lookupByCharClass(classId: number): number[] {
+    if (this.classIdToWordIds) {
+      return this.classIdToWordIds[classId] ?? [];
+    }
+
     const map = this.getTargetMap();
     const ids: number[] = [];
     for (const key of Object.keys(map)) {
@@ -46,6 +52,34 @@ export class UnknownDictionary extends TokenInfoDictionary {
       }
     }
     return ids;
+  }
+
+  override loadPosVector(data: Uint8Array): this {
+    if (data.byteLength === 0) {
+      this.classIdToWordIds = null;
+      return this;
+    }
+
+    const view = new DataView(
+      data.buffer,
+      data.byteOffset,
+      data.byteLength
+    );
+    const classCount = view.getInt32(0, true);
+    const map: Record<number, number[]> = {};
+    let offset = 4;
+    for (let classId = 0; classId < classCount; classId++) {
+      const wordIdCount = view.getInt32(offset, true);
+      offset += 4;
+      const wordIds: number[] = [];
+      for (let i = 0; i < wordIdCount; i++) {
+        wordIds.push(view.getInt32(offset, true));
+        offset += 4;
+      }
+      map[classId] = wordIds;
+    }
+    this.classIdToWordIds = map;
+    return this;
   }
 
   /**
