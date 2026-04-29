@@ -60,7 +60,7 @@ export async function compile(args: string[]): Promise<void> {
   for (const csvFile of csvFiles) {
     const raw = await readFile(join(sourceDir, csvFile));
     const text = decodeAutoDetect(new Uint8Array(raw));
-    for (const line of text.split("\n")) {
+    for (const line of splitLines(text)) {
       if (line.trim() === "") continue;
       // MeCab CSV format: surface,leftId,rightId,cost,features...
       const parts = parseCsvLine(line);
@@ -197,10 +197,14 @@ function parseCsvLine(line: string): string[] {
   return result;
 }
 
+function splitLines(text: string): string[] {
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+}
+
 async function parseMatrixDef(path: string): Promise<Uint8Array> {
   const raw = await readFile(path);
   const text = decodeAutoDetect(new Uint8Array(raw));
-  const lines = text.trim().split("\n");
+  const lines = splitLines(text.trim());
 
   // First line: forward_size backward_size
   const [forwardStr, backwardStr] = lines[0].split(/\s+/);
@@ -232,7 +236,7 @@ async function parseCharDef(
 }> {
   const raw = await readFile(path);
   const text = decodeAutoDetect(new Uint8Array(raw));
-  const lines = text.trim().split("\n");
+  const lines = splitLines(text.trim());
 
   const charDef = new CharacterDefinition();
 
@@ -305,7 +309,7 @@ async function parseUnkDef(
 ): Promise<{ unkBuf: Uint8Array; unkPosBuf: Uint8Array; unkMapBuf: Uint8Array }> {
   const raw = await readFile(path);
   const text = decodeAutoDetect(new Uint8Array(raw));
-  const lines = text.trim().split("\n");
+  const lines = splitLines(text.trim());
 
   const unkBuffer = new ByteBuffer(1024 * 64);
   const unkMapEntries: number[] = [];
