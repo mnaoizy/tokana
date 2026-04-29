@@ -1,6 +1,6 @@
 {
   "name": "tokana",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Modern Japanese morphological analyzer for TypeScript",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -26,6 +26,8 @@
   ],
   "scripts": {
     "build": "tsup",
+    "check": "npm run typecheck && npm test && npm run build",
+    "prepack": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
